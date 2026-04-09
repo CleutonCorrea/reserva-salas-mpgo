@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sistema de Reserva de Salas do MPGO — agende salas de reunião de forma rápida e prática.">
+    <title>Reserva de Salas - MPGO</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- FullCalendar CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet">
+    <style>
+        body { padding-top: 2rem; background-color: #f8f9fa; }
+
+        .calendar-container {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+        }
+
+        .fc-event { 
+            cursor: pointer; 
+            border-radius: 6px;
+            border: none !important;
+            padding: 2px 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: all 0.2s ease;
+        }
+        .fc-event:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+            filter: brightness(0.95);
+        }
+
+        /* Modal polish */
+        .modal-content {
+            border-radius: 12px;
+            overflow: hidden;
+            border: none;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.14);
+        }
+        .modal-header { border-bottom: none; padding-bottom: 0.25rem; }
+        .modal-footer { border-top: 1px solid #f0f0f0; }
+
+        /* Form focus */
+        .form-control:focus,
+        .form-select:focus {
+            box-shadow: 0 0 0 0.2rem rgba(13,110,253,0.15);
+            border-color: #86b7fe;
+        }
+
+        /* Button micro-animations */
+        .btn { transition: transform 0.1s ease, box-shadow 0.1s ease; }
+        .btn-primary:hover:not(:disabled)  { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(13,110,253,0.25); }
+        .btn-danger:hover:not(:disabled)   { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(220,53,69,0.25); }
+
+        /* Tooltip personalizado do calendário */
+        .fc-custom-tooltip {
+            position: fixed;
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: #212529;
+            border: 1px solid rgba(0,0,0,0.1);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            z-index: 10000;
+            pointer-events: none;
+            max-width: 280px;
+            line-height: 1.6;
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <div class="container mb-5">
+        <header class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white shadow-sm rounded-4">
+            <h1 class="h3 fw-bold text-primary mb-0">Sistema de Reserva de Salas</h1>
+            <div id="header-auth-area" class="d-flex align-items-center gap-2">
+                <div class="spinner-border spinner-border-sm text-secondary" role="status" aria-label="Carregando..."></div>
+            </div>
+        </header>
+        <main>
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" crossorigin="anonymous"></script>
+    <!-- FullCalendar: carregado após Bootstrap para garantir bootstrap.Modal disponível -->
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+
+    <script>
+    // ── Estado global de autenticação ─────────────────────────────────────────
+    window.usuarioAutenticado = false;
+    window.usuarioIsStaff = false;
+
+    function getCSRF() {
+        const el = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (el) return el.value;
+        const match = document.cookie.split('; ').find(r => r.startsWith('csrftoken='));
+        return match ? match.split('=')[1] : '';
+    }
+
+    async function initAuthState() {
+        try {
+            const res  = await fetch('/api/auth/session/');
+            const data = await res.json();
+            const area = document.getElementById('header-auth-area');
+
+            if (data.autenticado) {
+                window.usuarioAutenticado = true;
+                window.usuarioIsStaff    = data.usuario.is_staff;
+                window.usuarioGlobalData = data.usuario;
+                const nome = data.usuario.nm_completo || data.usuario.desc_email;
+                area.innerHTML = `
+                    <span class="text-muted small d-none d-sm-inline">Olá, <strong>${nome}</strong></span>
+                    <button class="btn btn-outline-primary btn-sm" id="btn-abrir-perfil" type="button" data-bs-toggle="modal" data-bs-target="#perfilModal">
+                        <i class="bi bi-person-gear me-1"></i>Perfil
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm" id="btn-logout" type="button">
+                        <i class="bi bi-box-arrow-right me-1"></i>Sair
+                    </button>
+                `;
+                document.getElementById('btn-logout').addEventListener('click', async () => {
+                    await fetch('/api/auth/logout/', {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': getCSRF() },
+                    });
+                    location.reload();
+                });
+            } else {
+                window.usuarioAutenticado = false;
+                area.innerHTML = `
+                    <button class="btn btn-outline-primary btn-sm" type="button"
+                            data-bs-toggle="modal" data-bs-target="#loginModal">
+                        <i class="bi bi-box-arrow-in-right me-1"></i>Entrar
+                    </button>
+                    <button class="btn btn-primary btn-sm" type="button"
+                            data-bs-toggle="modal" data-bs-target="#cadastroModal">
+                        <i class="bi bi-person-plus me-1"></i>Cadastrar
+                    </button>
+                `;
+            }
+        } catch (e) {
+            console.error('Erro ao verificar sessão:', e);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', initAuthState);
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

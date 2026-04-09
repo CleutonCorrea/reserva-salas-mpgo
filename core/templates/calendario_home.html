@@ -1,0 +1,738 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="calendar-container">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3 pb-3 border-bottom gap-3">
+        <div class="d-flex align-items-center gap-2">
+            <label for="filtro-sala" class="fw-semibold text-nowrap mb-0">Filtrar por Sala:</label>
+            <select id="filtro-sala" class="form-select form-select-sm fw-medium text-dark bg-light border-0" style="min-width: 200px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <option value="">Todas as Salas</option>
+                {% for room in rooms %}
+                <option value="{{ room.id }}">{{ room.nm_sala }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="text-muted small fw-semibold text-uppercase">Legenda:</span>
+                {% for room in rooms %}
+                <span class="badge rounded-pill fw-normal" style="background-color: {{ room.color }}; color: #333; border: 1px solid rgba(0,0,0,0.1); padding: 5px 10px;">{{ room.nm_sala }}</span>
+                {% endfor %}
+            </div>
+            <button class="btn btn-primary d-flex align-items-center py-2 px-3 fw-semibold shadow-sm" id="btn-nova-reserva-cta">
+                <i class="bi bi-calendar-plus me-2 fs-5"></i> Nova Reserva
+            </button>
+        </div>
+    </div>
+    <div id="calendar"></div>
+</div>
+
+{# ── Modal: Nova Reserva ──────────────────────────────────────────────────── #}
+<div class="modal fade" id="reservaModal" tabindex="-1" aria-labelledby="reservaModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="formReserva">
+        {% csrf_token %}
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="reservaModalLabel">
+            <i class="bi bi-calendar-plus me-2"></i>Nova Reserva
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div id="errorAlert" class="alert alert-danger d-none" role="alert"></div>
+          <input type="hidden" id="reserva_id" value="">
+
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label for="start_datetime" class="form-label fw-semibold">
+                Início <span class="text-danger">*</span>
+              </label>
+              <input type="datetime-local" class="form-control" id="start_datetime" required>
+            </div>
+            <div class="col-sm-6">
+              <label for="end_datetime" class="form-label fw-semibold">
+                Fim <span class="text-danger">*</span>
+              </label>
+              <input type="datetime-local" class="form-control" id="end_datetime" required>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="sala_id" class="form-label fw-semibold">
+              Sala de Reunião <span class="text-danger">*</span>
+            </label>
+            <select class="form-select" id="sala_id" required>
+              <option value="">Selecione uma sala...</option>
+              {% for room in rooms %}
+                <option value="{{ room.id }}">
+                  {{ room.nm_sala }} (Cap: {{ room.qtd_capacidade }}){% if room.projetor %} · Projetor{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="mb-1">
+            <label for="obs_reserva" class="form-label">
+              Observações <span class="text-muted fw-normal small">(opcional)</span>
+            </label>
+            <textarea class="form-control" id="obs_reserva" rows="2"
+                      placeholder="Ex: reunião de pauta, apresentação externa..."></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary" id="btn-confirmar-reserva">
+            <span class="spinner-border spinner-border-sm d-none me-1" id="spinner-reserva" role="status" aria-hidden="true"></span>
+            <i class="bi bi-check-lg me-1"></i>Confirmar Reserva
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Modal: Detalhes do Evento ───────────────────────────────────────────── #}
+<div class="modal fade" id="eventoModal" tabindex="-1" aria-labelledby="eventoModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="eventoModalLabel">
+          <i class="bi bi-calendar-event me-2"></i>Detalhes da Reserva
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+      </div>
+      <div class="modal-body" id="eventoModalBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+        <button type="button" class="btn btn-warning d-none" id="btn-editar-reserva">
+          <i class="bi bi-pencil me-1"></i>Editar
+        </button>
+        <button type="button" class="btn btn-danger d-none" id="btn-cancelar-reserva">
+          <i class="bi bi-x-circle me-1"></i>Cancelar Reserva
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Modal: Cadastro ─────────────────────────────────────────────────────── #}
+<div class="modal fade" id="cadastroModal" tabindex="-1" aria-labelledby="cadastroModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="formCadastro" novalidate>
+        {% csrf_token %}
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="cadastroModalLabel">
+            <i class="bi bi-person-plus me-2"></i>Criar Conta
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div id="cadastroAlert"   class="alert alert-danger  d-none" role="alert"></div>
+          <div id="cadastroSuccess" class="alert alert-success d-none" role="alert"></div>
+
+          <div class="mb-3">
+            <label for="cad-nm-completo" class="form-label fw-semibold">
+              Nome Completo <span class="text-danger">*</span>
+            </label>
+            <input type="text" class="form-control" id="cad-nm-completo"
+                   placeholder="Ex: João da Silva" autocomplete="name">
+          </div>
+
+          <div class="mb-3">
+            <label for="cad-email" class="form-label fw-semibold">
+              E-mail <span class="text-danger">*</span>
+            </label>
+            <input type="email" class="form-control" id="cad-email"
+                   placeholder="seu@email.com" autocomplete="email">
+          </div>
+
+          <div class="mb-3">
+            <label for="cad-senha" class="form-label fw-semibold">
+              Senha <span class="text-danger">*</span>
+            </label>
+            <div class="input-group">
+              <input type="password" class="form-control" id="cad-senha"
+                     placeholder="Mínimo 8 caracteres" autocomplete="new-password">
+              <button class="btn btn-outline-secondary" type="button"
+                      id="btn-toggle-cad-senha" aria-label="Mostrar/ocultar senha">
+                <i class="bi bi-eye" id="icon-toggle-cad-senha"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="cad-senha-confirm" class="form-label fw-semibold">
+              Confirmar Senha <span class="text-danger">*</span>
+            </label>
+            <div class="input-group">
+              <input type="password" class="form-control" id="cad-senha-confirm"
+                     placeholder="Repita a senha" autocomplete="new-password">
+              <button class="btn btn-outline-secondary" type="button"
+                      id="btn-toggle-cad-confirm" aria-label="Mostrar/ocultar confirmação">
+                <i class="bi bi-eye" id="icon-toggle-cad-confirm"></i>
+              </button>
+            </div>
+            <div class="form-text text-danger d-none" id="senha-match-error">
+              <i class="bi bi-exclamation-circle me-1"></i>As senhas não coincidem.
+            </div>
+          </div>
+
+          <hr class="my-3">
+          <p class="text-muted small mb-3">
+            <i class="bi bi-info-circle me-1"></i>Campos opcionais
+          </p>
+
+          <div class="row g-3">
+            <div class="col-sm-6">
+              <label for="cad-ramal" class="form-label">Ramal</label>
+              <input type="text" class="form-control" id="cad-ramal" placeholder="Ex: 1234">
+            </div>
+            <div class="col-sm-6">
+              <label for="cad-setor" class="form-label">Setor</label>
+              <input type="text" class="form-control" id="cad-setor" placeholder="Ex: Assessoria">
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer flex-column align-items-stretch gap-2">
+          <button type="submit" class="btn btn-primary" id="btn-cadastrar">
+            <span class="spinner-border spinner-border-sm d-none me-1" id="spinner-cadastro" role="status" aria-hidden="true"></span>
+            <i class="bi bi-check-lg me-1"></i>Criar Conta
+          </button>
+          <p class="text-center text-muted small mb-0">
+            Já tem conta? <a href="#" id="link-para-login">Entrar</a>
+          </p>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Modal: Login ────────────────────────────────────────────────────────── #}
+<div class="modal fade" id="loginModal" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="formLogin" novalidate>
+        {% csrf_token %}
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="loginModalLabel">
+            <i class="bi bi-box-arrow-in-right me-2"></i>Entrar
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div id="loginAlert" class="alert alert-danger d-none" role="alert"></div>
+
+          <div class="mb-3">
+            <label for="login-email" class="form-label fw-semibold">E-mail</label>
+            <input type="email" class="form-control" id="login-email"
+                   placeholder="seu@email.com" autocomplete="email">
+          </div>
+
+          <div class="mb-3">
+            <label for="login-senha" class="form-label fw-semibold">Senha</label>
+            <div class="input-group">
+              <input type="password" class="form-control" id="login-senha"
+                     placeholder="Sua senha" autocomplete="current-password">
+              <button class="btn btn-outline-secondary" type="button"
+                      id="btn-toggle-login-senha" aria-label="Mostrar/ocultar senha">
+                <i class="bi bi-eye" id="icon-toggle-login-senha"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer flex-column align-items-stretch gap-2">
+          <button type="submit" class="btn btn-primary" id="btn-login">
+            <span class="spinner-border spinner-border-sm d-none me-1" id="spinner-login" role="status" aria-hidden="true"></span>
+            <i class="bi bi-box-arrow-in-right me-1"></i>Entrar
+          </button>
+          <p class="text-center text-muted small mb-0">
+            Não tem conta? <a href="#" id="link-para-cadastro">Cadastrar</a>
+          </p>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Modal: Perfil ────────────────────────────────────────────────────────── #}
+<div class="modal fade" id="perfilModal" tabindex="-1" aria-labelledby="perfilModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form id="formPerfil" novalidate>
+        {% csrf_token %}
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="perfilModalLabel">
+            <i class="bi bi-person-gear me-2"></i>Editar Perfil
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+        </div>
+
+        <div class="modal-body">
+          <div id="perfilAlert"   class="alert alert-danger  d-none" role="alert"></div>
+          <div id="perfilSuccess" class="alert alert-success d-none" role="alert"></div>
+
+          <div class="mb-3">
+            <label for="perf-nm-completo" class="form-label fw-semibold">
+              Nome Completo <span class="text-danger">*</span>
+            </label>
+            <input type="text" class="form-control" id="perf-nm-completo" required>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label fw-semibold text-muted">E-mail (Apenas Leitura)</label>
+            <input type="email" class="form-control" id="perf-email" disabled>
+          </div>
+
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label for="perf-ramal" class="form-label">Ramal</label>
+              <input type="text" class="form-control" id="perf-ramal">
+            </div>
+            <div class="col-sm-6">
+              <label for="perf-setor" class="form-label">Setor</label>
+              <input type="text" class="form-control" id="perf-setor">
+            </div>
+          </div>
+
+          <hr class="my-4">
+          <h6 class="fw-bold mb-3"><i class="bi bi-shield-lock me-2"></i>Alterar Senha <span class="text-muted fw-normal small">(opcional)</span></h6>
+          
+          <div class="mb-3">
+            <label for="perf-senha-antiga" class="form-label fw-semibold">Senha Antiga</label>
+            <input type="password" class="form-control" id="perf-senha-antiga" placeholder="Digite sua senha atual">
+          </div>
+          <div class="mb-3">
+            <label for="perf-senha-nova" class="form-label fw-semibold">Nova Senha</label>
+            <input type="password" class="form-control" id="perf-senha-nova">
+          </div>
+          <div class="mb-3">
+            <label for="perf-senha-nova-confirm" class="form-label fw-semibold">Confirme Nova Senha</label>
+            <input type="password" class="form-control" id="perf-senha-nova-confirm">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+          <button type="submit" class="btn btn-primary" id="btn-atualizar-perfil">
+            <span class="spinner-border spinner-border-sm d-none me-1" id="spinner-perfil" role="status" aria-hidden="true"></span>
+            <i class="bi bi-check-lg me-1"></i>Salvar Perfil
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    // ── Instâncias de modais ──────────────────────────────────────────────────
+    const reservaModal  = new bootstrap.Modal(document.getElementById('reservaModal'));
+    const eventoModal   = new bootstrap.Modal(document.getElementById('eventoModal'));
+    const cadastroModal = new bootstrap.Modal(document.getElementById('cadastroModal'));
+    const loginModal    = new bootstrap.Modal(document.getElementById('loginModal'));
+    const perfilModal   = document.getElementById('perfilModal') ? new bootstrap.Modal(document.getElementById('perfilModal')) : null;
+
+    // ── Navegação entre modais ────────────────────────────────────────────────
+    document.getElementById('link-para-login').addEventListener('click', function (e) {
+        e.preventDefault();
+        cadastroModal.hide();
+        setTimeout(() => loginModal.show(), 300);
+    });
+    document.getElementById('link-para-cadastro').addEventListener('click', function (e) {
+        e.preventDefault();
+        loginModal.hide();
+        setTimeout(() => cadastroModal.show(), 300);
+    });
+
+    // ── Helper: toggle visibilidade de senha ──────────────────────────────────
+    function setupToggle(btnId, inputId, iconId) {
+        document.getElementById(btnId).addEventListener('click', function () {
+            const input   = document.getElementById(inputId);
+            const icon    = document.getElementById(iconId);
+            const visible = input.type === 'text';
+            input.type    = visible ? 'password' : 'text';
+            icon.className = visible ? 'bi bi-eye' : 'bi bi-eye-slash';
+        });
+    }
+    setupToggle('btn-toggle-cad-senha',   'cad-senha',         'icon-toggle-cad-senha');
+    setupToggle('btn-toggle-cad-confirm', 'cad-senha-confirm', 'icon-toggle-cad-confirm');
+    setupToggle('btn-toggle-login-senha', 'login-senha',       'icon-toggle-login-senha');
+
+    // ── Helper: spinner / botão de loading ────────────────────────────────────
+    function setLoading(spinnerId, btnId, on) {
+        document.getElementById(spinnerId).classList.toggle('d-none', !on);
+        document.getElementById(btnId).disabled = on;
+    }
+
+    // ── Formulário de Cadastro ────────────────────────────────────────────────
+    document.getElementById('formCadastro').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const alertEl   = document.getElementById('cadastroAlert');
+        const successEl = document.getElementById('cadastroSuccess');
+        const matchErr  = document.getElementById('senha-match-error');
+        alertEl.classList.add('d-none');
+        successEl.classList.add('d-none');
+        matchErr.classList.add('d-none');
+
+        const nmCompleto = document.getElementById('cad-nm-completo').value.trim();
+        const email      = document.getElementById('cad-email').value.trim();
+        const senha      = document.getElementById('cad-senha').value;
+        const confirm_   = document.getElementById('cad-senha-confirm').value;
+        const ramal      = document.getElementById('cad-ramal').value.trim();
+        const setor      = document.getElementById('cad-setor').value.trim();
+
+        if (senha !== confirm_) {
+            matchErr.classList.remove('d-none');
+            document.getElementById('cad-senha-confirm').focus();
+            return;
+        }
+
+        setLoading('spinner-cadastro', 'btn-cadastrar', true);
+        try {
+            const res  = await fetch('/api/auth/register/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+                body: JSON.stringify({
+                    nm_completo: nmCompleto,
+                    desc_email: email,
+                    senha,
+                    senha_confirmacao: confirm_,
+                    nr_ramal: ramal,
+                    nm_setor: setor,
+                }),
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                successEl.textContent = `Conta criada! Bem-vindo(a), ${data.usuario.nm_completo || email}.`;
+                successEl.classList.remove('d-none');
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                alertEl.innerHTML = data.errors.join('<br>');
+                alertEl.classList.remove('d-none');
+            }
+        } catch {
+            alertEl.textContent = 'Erro de comunicação com o servidor.';
+            alertEl.classList.remove('d-none');
+        } finally {
+            setLoading('spinner-cadastro', 'btn-cadastrar', false);
+        }
+    });
+
+    // ── Formulário de Login ───────────────────────────────────────────────────
+    document.getElementById('formLogin').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const alertEl = document.getElementById('loginAlert');
+        alertEl.classList.add('d-none');
+
+        const email = document.getElementById('login-email').value.trim();
+        const senha = document.getElementById('login-senha').value;
+
+        setLoading('spinner-login', 'btn-login', true);
+        try {
+            const res  = await fetch('/api/auth/login/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+                body: JSON.stringify({ desc_email: email, senha }),
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                location.reload();
+            } else {
+                alertEl.innerHTML = data.errors.join('<br>');
+                alertEl.classList.remove('d-none');
+            }
+        } catch {
+            alertEl.textContent = 'Erro de comunicação com o servidor.';
+            alertEl.classList.remove('d-none');
+        } finally {
+            setLoading('spinner-login', 'btn-login', false);
+        }
+    });
+
+    // ── Formulário de Perfil ──────────────────────────────────────────────────
+    const perfilModalEl = document.getElementById('perfilModal');
+    if (perfilModalEl) {
+        perfilModalEl.addEventListener('show.bs.modal', function () {
+            document.getElementById('perfilAlert').classList.add('d-none');
+            document.getElementById('perfilSuccess').classList.add('d-none');
+            
+            if (window.usuarioGlobalData) {
+                document.getElementById('perf-nm-completo').value = window.usuarioGlobalData.nm_completo || '';
+                document.getElementById('perf-email').value = window.usuarioGlobalData.desc_email || '';
+                document.getElementById('perf-ramal').value = window.usuarioGlobalData.nr_ramal || '';
+                document.getElementById('perf-setor').value = window.usuarioGlobalData.nm_setor || '';
+            }
+            document.getElementById('perf-senha-antiga').value = '';
+            document.getElementById('perf-senha-nova').value = '';
+            document.getElementById('perf-senha-nova-confirm').value = '';
+        });
+
+        document.getElementById('formPerfil').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const alertEl = document.getElementById('perfilAlert');
+            const successEl = document.getElementById('perfilSuccess');
+            alertEl.classList.add('d-none');
+            successEl.classList.add('d-none');
+            
+            const payload = {
+                nm_completo: document.getElementById('perf-nm-completo').value,
+                nr_ramal: document.getElementById('perf-ramal').value,
+                nm_setor: document.getElementById('perf-setor').value,
+                senha_antiga: document.getElementById('perf-senha-antiga').value,
+                senha_nova: document.getElementById('perf-senha-nova').value,
+                senha_nova_confirmacao: document.getElementById('perf-senha-nova-confirm').value,
+            };
+
+            setLoading('spinner-perfil', 'btn-atualizar-perfil', true);
+            try {
+                const res = await fetch('/api/auth/profile/edit/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+                    body: JSON.stringify(payload),
+                });
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    successEl.textContent = 'Perfil atualizado com sucesso!';
+                    successEl.classList.remove('d-none');
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    alertEl.innerHTML = data.errors.join('<br>');
+                    alertEl.classList.remove('d-none');
+                }
+            } catch {
+                alertEl.textContent = 'Erro de comunicação com servidor.';
+                alertEl.classList.remove('d-none');
+            } finally {
+                setLoading('spinner-perfil', 'btn-atualizar-perfil', false);
+            }
+        });
+    }
+
+    // ── Helper: converter Date para formato datetime-local (YYYY-MM-DDTHH:MM) ──
+    function toDatetimeLocal(date) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    // ── Tooltip do calendário ─────────────────────────────────────────────────
+    let tooltipEl = null;
+
+    function positionTooltip(e) {
+        if (!tooltipEl) return;
+        tooltipEl.style.left = (e.clientX + 14) + 'px';
+        tooltipEl.style.top  = (e.clientY + 14) + 'px';
+    }
+
+    // ── FullCalendar ──────────────────────────────────────────────────────────
+    const calendarEl = document.getElementById('calendar');
+    const calendar   = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'timeGridWeek',
+        locale: 'pt-br',
+        slotMinTime: '08:00:00',
+        slotMaxTime: '19:00:00',
+        allDaySlot: false,
+        headerToolbar: {
+            left:   'prev,next today',
+            center: 'title',
+            right:  'dayGridMonth,timeGridWeek,timeGridDay',
+        },
+        events: function(fetchInfo, successCallback, failureCallback) {
+            const salaId = document.getElementById('filtro-sala').value;
+            const url = new URL('/api/events/', window.location.origin);
+            if (salaId) {
+                url.searchParams.append('sala_id', salaId);
+            }
+            fetch(url)
+                .then(res => res.json())
+                .then(events => successCallback(events))
+                .catch(err => failureCallback(err));
+        },
+        height: '700px',
+        selectable: true,
+        selectMirror: true,
+
+        // Clique no grid (criar reserva)
+        select: function (info) {
+            if (!window.usuarioAutenticado) {
+                calendar.unselect();
+                loginModal.show();
+                return;
+            }
+            document.getElementById('reserva_id').value = '';
+            document.getElementById('formReserva').reset();
+            document.getElementById('reservaModalLabel').innerHTML = '<i class="bi bi-calendar-plus me-2"></i>Nova Reserva';
+            document.getElementById('start_datetime').value = toDatetimeLocal(info.start);
+            document.getElementById('end_datetime').value   = toDatetimeLocal(info.end);
+            document.getElementById('errorAlert').classList.add('d-none');
+            reservaModal.show();
+            calendar.unselect();
+        },
+
+        // Hover: tooltip com informações do criador
+        eventMouseEnter: function (info) {
+            const texto = info.event.extendedProps.tooltip_info;
+            if (!texto) return;
+            tooltipEl = document.createElement('div');
+            tooltipEl.className = 'fc-custom-tooltip';
+            tooltipEl.innerHTML = texto;
+            document.body.appendChild(tooltipEl);
+            info.el.addEventListener('mousemove', positionTooltip);
+        },
+
+        eventMouseLeave: function (info) {
+            if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
+            info.el.removeEventListener('mousemove', positionTooltip);
+        },
+
+        // Clique no evento (detalhes + cancelar)
+        eventClick: function (info) {
+            const evento = info.event;
+            const props  = evento.extendedProps;
+            const opts   = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+            const inicio = evento.start ? evento.start.toLocaleString('pt-BR', opts) : '—';
+            const fim    = evento.end   ? evento.end.toLocaleString('pt-BR', opts)   : '—';
+            const partes = evento.title.split(' — ');
+            const sala   = partes[0] || '—';
+            const solicitante = partes[1] || '—';
+
+            let corpo = `
+                <p class="mb-2"><i class="bi bi-door-open text-primary me-2"></i><strong>Sala:</strong> ${sala}</p>
+                <p class="mb-2"><i class="bi bi-person text-primary me-2"></i><strong>Solicitante:</strong> ${solicitante}</p>
+                <p class="mb-2"><i class="bi bi-clock text-primary me-2"></i><strong>Início:</strong> ${inicio}</p>
+                <p class="mb-2"><i class="bi bi-clock-history text-primary me-2"></i><strong>Fim:</strong> ${fim}</p>
+            `;
+            if (props.obs_reserva) {
+                corpo += `<p class="mb-0"><i class="bi bi-chat-left-text text-primary me-2"></i><strong>Obs:</strong> ${props.obs_reserva}</p>`;
+            }
+            document.getElementById('eventoModalBody').innerHTML = corpo;
+
+            const btnCancelar = document.getElementById('btn-cancelar-reserva');
+            const btnEditar = document.getElementById('btn-editar-reserva');
+            if (props.can_cancel) {
+                btnCancelar.classList.remove('d-none');
+                btnEditar.classList.remove('d-none');
+                
+                btnEditar.onclick = function() {
+                    document.getElementById('reserva_id').value = evento.id;
+                    document.getElementById('sala_id').value = props.sala_id;
+                    document.getElementById('start_datetime').value = toDatetimeLocal(evento.start);
+                    document.getElementById('end_datetime').value = toDatetimeLocal(evento.end);
+                    document.getElementById('obs_reserva').value = props.obs_reserva || '';
+                    document.getElementById('errorAlert').classList.add('d-none');
+                    document.getElementById('reservaModalLabel').innerHTML = '<i class="bi bi-pencil-square me-2"></i>Editar Reserva';
+                    bootstrap.Modal.getInstance(document.getElementById('eventoModal')).hide();
+                    setTimeout(() => reservaModal.show(), 300);
+                };
+
+                btnCancelar.onclick = async function () {
+                    if (!confirm('Tem certeza que deseja cancelar esta reserva?')) return;
+                    try {
+                        const res  = await fetch(`/api/events/${evento.id}/cancel/`, {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': getCSRF() },
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            bootstrap.Modal.getInstance(document.getElementById('eventoModal')).hide();
+                            calendar.refetchEvents();
+                        } else {
+                            alert(data.errors?.join('\n') || 'Erro ao cancelar reserva.');
+                        }
+                    } catch {
+                        alert('Erro de comunicação com o servidor.');
+                    }
+                };
+            } else {
+                btnCancelar.classList.add('d-none');
+                btnEditar.classList.add('d-none');
+            }
+
+            eventoModal.show();
+        },
+    });
+    calendar.render();
+
+    // ── Filtro Assíncrono e Botão CTA ─────────────────────────────────────────
+    document.getElementById('filtro-sala').addEventListener('change', function() {
+        calendar.refetchEvents();
+    });
+
+    document.getElementById('btn-nova-reserva-cta').addEventListener('click', function() {
+        if (!window.usuarioAutenticado) {
+            loginModal.show();
+            return;
+        }
+        document.getElementById('reserva_id').value = '';
+        document.getElementById('formReserva').reset();
+        document.getElementById('reservaModalLabel').innerHTML = '<i class="bi bi-calendar-plus me-2"></i>Nova Reserva';
+        
+        const now = new Date();
+        const end = new Date(now.getTime() + 60 * 60 * 1000); // 1 hora de duracao default
+        document.getElementById('start_datetime').value = toDatetimeLocal(now);
+        document.getElementById('end_datetime').value   = toDatetimeLocal(end);
+        document.getElementById('errorAlert').classList.add('d-none');
+        reservaModal.show();
+    });
+
+    // ── Formulário de Reserva ─────────────────────────────────────────────────
+    document.getElementById('formReserva').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const alertEl = document.getElementById('errorAlert');
+        alertEl.classList.add('d-none');
+
+        const payload = {
+            sala_id:     document.getElementById('sala_id').value,
+            start:       document.getElementById('start_datetime').value,
+            end:         document.getElementById('end_datetime').value,
+            obs_reserva: document.getElementById('obs_reserva').value.trim(),
+        };
+
+        const reserva_id = document.getElementById('reserva_id').value;
+        const url_endpoint = reserva_id ? `/api/events/${reserva_id}/edit/` : '/api/events/create/';
+
+        setLoading('spinner-reserva', 'btn-confirmar-reserva', true);
+        try {
+            const res  = await fetch(url_endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (data.status === 'success') {
+                reservaModal.hide();
+                calendar.refetchEvents();
+                document.getElementById('formReserva').reset();
+            } else {
+                alertEl.innerHTML = data.errors ? data.errors.join('<br>') : 'Erro ao processar reserva.';
+                alertEl.classList.remove('d-none');
+            }
+        } catch {
+            alertEl.textContent = 'Erro de comunicação com o servidor.';
+            alertEl.classList.remove('d-none');
+        } finally {
+            setLoading('spinner-reserva', 'btn-confirmar-reserva', false);
+        }
+    });
+
+    // Limpar alertas ao fechar o modal de reserva
+    document.getElementById('reservaModal').addEventListener('hidden.bs.modal', function () {
+        document.getElementById('errorAlert').classList.add('d-none');
+    });
+
+});
+</script>
+{% endblock %}
