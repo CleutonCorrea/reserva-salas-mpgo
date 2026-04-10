@@ -1,27 +1,94 @@
 {% extends 'base.html' %}
 
+{% block extra_head %}
+<style>
+    /* Tarefa 2: Otimização do Grid do FullCalendar */
+    :root {
+        --fc-border-color: #e9ecef; /* Cinza bem sutil */
+    }
+    /* Marcador do dia de hoje com cor neutra e clara */
+    .fc .fc-day-today {
+        background-color: rgba(233, 240, 250, 0.4) !important;
+    }
+    .fc .fc-col-header-cell.fc-day-today .fc-col-header-cell-cushion {
+        color: #0d6efd !important;
+        font-weight: 800;
+    }
+    
+    /* Toolbar header alinhamento professional */
+    .fc .fc-toolbar.fc-header-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: center;
+        margin-bottom: 1.5rem !important;
+    }
+    .fc .fc-toolbar-title {
+        font-size: 1.5rem !important;
+        font-weight: bold;
+        color: #212529;
+    }
+    .fc .fc-button-primary {
+        background-color: #f8f9fa !important;
+        border-color: #dee2e6 !important;
+        color: #495057 !important;
+        text-transform: capitalize;
+        box-shadow: none !important;
+        transition: all 0.2s ease;
+    }
+    .fc .fc-button-primary:hover, .fc .fc-button-primary:not(:disabled).fc-button-active {
+        background-color: #e9ecef !important;
+        color: #212529 !important;
+        border-color: #ced4da !important;
+    }
+
+    /* Tarefa 4: Resolução de Conflitos Visuais e Legibilidade nos Eventos */
+    .fc-event {
+        color: #1e1e1e !important;
+        overflow: hidden;
+    }
+    .fc-event .fc-event-main {
+        padding: 0;
+    }
+    .fc-v-event {
+        border-width: 0 !important;
+    }
+    .fc-v-event .fc-event-main {
+        color: inherit !important;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="calendar-container">
-    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-3 pb-3 border-bottom gap-3">
-        <div class="d-flex align-items-center gap-2">
-            <label for="filtro-sala" class="fw-semibold text-nowrap mb-0">Filtrar por Sala:</label>
-            <select id="filtro-sala" class="form-select form-select-sm fw-medium text-dark bg-light border-0" style="min-width: 200px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                <option value="">Todas as Salas</option>
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center mb-4 pb-3 border-bottom gap-3">
+        <div class="d-flex align-items-center gap-3 w-100 overflow-hidden">
+            <span class="fw-bold text-muted text-nowrap d-flex align-items-center mb-0">
+                <i class="bi bi-funnel text-primary me-2 fs-5"></i>Salas:
+            </span>
+            <ul class="nav nav-pills gap-2 flex-nowrap overflow-auto pb-1 align-items-center" id="filtro-sala-pills" style="white-space: nowrap; flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: none;">
+                <li class="nav-item">
+                    <button class="btn active btn-sm rounded-pill px-3 fw-semibold shadow-sm text-white" 
+                            data-sala-id="" data-color="#0d6efd" data-is-todas="true"
+                            style="background-color: #0d6efd; border-color: #0d6efd;">
+                        <i class="bi bi-collection me-1"></i>Todas
+                    </button>
+                </li>
                 {% for room in rooms %}
-                <option value="{{ room.id }}">{{ room.nm_sala }}</option>
+                <li class="nav-item">
+                    <button class="btn btn-outline-secondary btn-sm rounded-pill px-3 fw-semibold" 
+                            data-sala-id="{{ room.id }}" data-color="{{ room.color }}" 
+                            style="border-color: {{ room.color }}; color: #495057;">
+                        {{ room.nm_sala }}
+                    </button>
+                </li>
                 {% endfor %}
-            </select>
+            </ul>
         </div>
         
-        <div class="d-flex align-items-center gap-3 flex-wrap">
-            <div class="d-flex align-items-center gap-2 flex-wrap">
-                <span class="text-muted small fw-semibold text-uppercase">Legenda:</span>
-                {% for room in rooms %}
-                <span class="badge rounded-pill fw-normal" style="background-color: {{ room.color }}; color: #333; border: 1px solid rgba(0,0,0,0.1); padding: 5px 10px;">{{ room.nm_sala }}</span>
-                {% endfor %}
-            </div>
-            <button class="btn btn-primary d-flex align-items-center py-2 px-3 fw-semibold shadow-sm" id="btn-nova-reserva-cta">
-                <i class="bi bi-calendar-plus me-2 fs-5"></i> Nova Reserva
+        <div class="flex-shrink-0 ms-lg-auto">
+            <button class="btn btn-primary d-inline-flex align-items-center justify-content-center py-2 px-4 shadow-sm rounded-pill fw-bold transition-all" id="btn-nova-reserva-cta">
+                <i class="bi bi-plus-lg me-2 fs-5"></i> Nova Reserva
             </button>
         </div>
     </div>
@@ -528,15 +595,6 @@ document.addEventListener('DOMContentLoaded', function () {
         return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
     }
 
-    // ── Tooltip do calendário ─────────────────────────────────────────────────
-    let tooltipEl = null;
-
-    function positionTooltip(e) {
-        if (!tooltipEl) return;
-        tooltipEl.style.left = (e.clientX + 14) + 'px';
-        tooltipEl.style.top  = (e.clientY + 14) + 'px';
-    }
-
     // ── FullCalendar ──────────────────────────────────────────────────────────
     const calendarEl = document.getElementById('calendar');
     const calendar   = new FullCalendar.Calendar(calendarEl, {
@@ -552,12 +610,16 @@ document.addEventListener('DOMContentLoaded', function () {
         slotMaxTime: '19:00:00',
         allDaySlot: false,
         headerToolbar: {
-            left:   'prev,next today',
-            center: 'title',
-            right:  'dayGridMonth,timeGridWeek,timeGridDay',
+            left:   'title',
+            center: '',
+            right:  'prev,next today dayGridMonth,timeGridWeek,timeGridDay',
         },
+        titleFormat: { year: 'numeric', month: 'long', day: 'numeric' },
+        dayHeaderFormat: { weekday: 'short', day: '2-digit', month: '2-digit', omitCommas: true },
+        eventMinHeight: 45,
         events: function(fetchInfo, successCallback, failureCallback) {
-            const salaId = document.getElementById('filtro-sala').value;
+            const activePill = document.querySelector('#filtro-sala-pills .active');
+            const salaId = activePill ? activePill.getAttribute('data-sala-id') : '';
             const url = new URL('/api/events/', window.location.origin);
             if (salaId) {
                 url.searchParams.append('sala_id', salaId);
@@ -567,6 +629,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(events => successCallback(events))
                 .catch(err => failureCallback(err));
         },
+        slotEventOverlap: false,
         height: '700px',
         selectable: true,
         selectMirror: true,
@@ -588,20 +651,56 @@ document.addEventListener('DOMContentLoaded', function () {
             calendar.unselect();
         },
 
-        // Hover: tooltip com informações do criador
-        eventMouseEnter: function (info) {
-            const texto = info.event.extendedProps.tooltip_info;
-            if (!texto) return;
-            tooltipEl = document.createElement('div');
-            tooltipEl.className = 'fc-custom-tooltip';
-            tooltipEl.innerHTML = texto;
-            document.body.appendChild(tooltipEl);
-            info.el.addEventListener('mousemove', positionTooltip);
+        eventContent: function(arg) {
+            const timeText = arg.timeText;
+            const titleHtml = `
+                <div class="w-100 h-100 p-1 d-flex flex-column text-start" style="overflow: hidden;">
+                    <div class="text-dark fw-semibold" style="font-size: 0.65rem; line-height: 1.1; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.75; text-transform: uppercase;">
+                        <i class="bi bi-clock me-1"></i>${timeText}
+                    </div>
+                    <div class="text-dark fw-bold" style="font-size: 0.75rem; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;">
+                        ${arg.event.title}
+                    </div>
+                </div>
+            `;
+            return { html: titleHtml };
         },
 
-        eventMouseLeave: function (info) {
-            if (tooltipEl) { tooltipEl.remove(); tooltipEl = null; }
-            info.el.removeEventListener('mousemove', positionTooltip);
+        eventDidMount: function(info) {
+            const props = info.event.extendedProps;
+            const opts   = { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+            const inicio = info.event.start ? info.event.start.toLocaleString('pt-BR', opts) : '—';
+            const fim    = info.event.end   ? info.event.end.toLocaleString('pt-BR', opts)   : '—';
+            const partes = info.event.title.split(' — ');
+            const sala   = partes[0] || '—';
+            const solicitante = props.nm_solicitante_real || partes[1] || '—';
+            
+            const popoverContent = `
+                <div class="small">
+                    <div class="mb-1"><i class="bi bi-door-open text-primary me-1"></i><strong>Sala:</strong> ${sala}</div>
+                    <div class="mb-1"><i class="bi bi-person text-primary me-1"></i><strong>Solicitante:</strong> ${solicitante}</div>
+                    <div class="mb-1"><i class="bi bi-clock text-primary me-1"></i><strong>Início:</strong> ${inicio}</div>
+                    <div class="mb-1"><i class="bi bi-clock-history text-primary me-1"></i><strong>Fim:</strong> ${fim}</div>
+                    ${props.obs_reserva ? `<div class="mt-2 pt-2 border-top"><i class="bi bi-chat-left-text text-primary me-1"></i><strong>Obs:</strong> ${props.obs_reserva}</div>` : ''}
+                </div>
+            `;
+            
+            new bootstrap.Popover(info.el, {
+                title: '<i class="bi bi-info-circle me-1"></i>Detalhes da Reserva',
+                content: popoverContent,
+                html: true,
+                trigger: 'hover',
+                placement: 'top',
+                container: 'body',
+                customClass: 'shadow-lg border-0'
+            });
+        },
+
+        eventWillUnmount: function(info) {
+            const popover = bootstrap.Popover.getInstance(info.el);
+            if (popover) {
+                popover.dispose();
+            }
         },
 
         // Clique no evento (detalhes + cancelar)
@@ -613,7 +712,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const fim    = evento.end   ? evento.end.toLocaleString('pt-BR', opts)   : '—';
             const partes = evento.title.split(' — ');
             const sala   = partes[0] || '—';
-            const solicitante = partes[1] || '—';
+            const solicitante = props.nm_solicitante_real || partes[1] || '—';
 
             let corpo = `
                 <p class="mb-2"><i class="bi bi-door-open text-primary me-2"></i><strong>Sala:</strong> ${sala}</p>
@@ -655,11 +754,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         if (data.status === 'success') {
                             bootstrap.Modal.getInstance(document.getElementById('eventoModal')).hide();
                             calendar.refetchEvents();
+                            if (window.showToast) window.showToast('Reserva cancelada com sucesso.', 'success');
                         } else {
-                            alert(data.errors?.join('\n') || 'Erro ao cancelar reserva.');
+                            if (window.showToast) window.showToast(data.errors?.join('\n') || 'Erro ao cancelar reserva.', 'danger');
                         }
                     } catch {
-                        alert('Erro de comunicação com o servidor.');
+                        if (window.showToast) window.showToast('Erro de comunicação com o servidor.', 'danger');
                     }
                 };
             } else {
@@ -673,8 +773,25 @@ document.addEventListener('DOMContentLoaded', function () {
     calendar.render();
 
     // ── Filtro Assíncrono e Botão CTA ─────────────────────────────────────────
-    document.getElementById('filtro-sala').addEventListener('change', function() {
-        calendar.refetchEvents();
+    document.querySelectorAll('#filtro-sala-pills button').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('#filtro-sala-pills button').forEach(b => {
+                 b.classList.remove('active');
+                 b.classList.remove('shadow-sm', 'text-white');
+                 b.style.backgroundColor = 'transparent';
+                 b.style.color = '#495057';
+                 if (b.getAttribute('data-is-todas')) {
+                    b.classList.add('btn-outline-primary');
+                 } else {
+                    b.classList.add('btn-outline-secondary');
+                 }
+            });
+            this.classList.add('active', 'shadow-sm', 'text-white');
+            this.classList.remove('btn-outline-secondary', 'btn-outline-primary');
+            this.style.backgroundColor = this.getAttribute('data-color');
+            this.style.borderColor = this.getAttribute('data-color');
+            calendar.refetchEvents();
+        });
     });
 
     document.getElementById('btn-nova-reserva-cta').addEventListener('click', function() {
@@ -722,6 +839,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 reservaModal.hide();
                 calendar.refetchEvents();
                 document.getElementById('formReserva').reset();
+                if (window.showToast) window.showToast('Reserva confirmada com sucesso!', 'success');
             } else {
                 alertEl.innerHTML = data.errors ? data.errors.join('<br>') : 'Erro ao processar reserva.';
                 alertEl.classList.remove('d-none');
@@ -729,6 +847,7 @@ document.addEventListener('DOMContentLoaded', function () {
         } catch {
             alertEl.textContent = 'Erro de comunicação com o servidor.';
             alertEl.classList.remove('d-none');
+            if (window.showToast) window.showToast('Erro de comunicação com o servidor.', 'danger');
         } finally {
             setLoading('spinner-reserva', 'btn-confirmar-reserva', false);
         }

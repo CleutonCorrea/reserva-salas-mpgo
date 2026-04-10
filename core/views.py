@@ -69,7 +69,7 @@ class EventsJSONView(View):
 
             events.append({
                 'id': r.id,
-                'title': f'{r.sala.nm_sala} — {nm_completo}',
+                'title': f'{r.sala.nm_sala} — {perfil.nm_setor if (perfil and perfil.nm_setor) else nm_completo}',
                 'start': r.dth_inicio.isoformat(),
                 'end': r.dth_fim.isoformat(),
                 'can_cancel': can_cancel,
@@ -78,6 +78,7 @@ class EventsJSONView(View):
                 'borderColor': color,
                 'obs_reserva': r.obs_reserva or '',
                 'sala_id': r.sala.id,
+                'nm_solicitante_real': nm_completo,
             })
 
         return JsonResponse(events, safe=False)
