@@ -10,6 +10,9 @@ from .views import (
     UserLogoutView,
     UserSessionView,
     UserProfileEditView,
+    AprovacaoListView,
+    AprovarReservaView,
+    RecusarReservaView,
 )
 
 urlpatterns = [
@@ -27,4 +30,9 @@ urlpatterns = [
     path('api/auth/logout/', UserLogoutView.as_view(), name='api_auth_logout'),
     path('api/auth/session/', UserSessionView.as_view(), name='api_auth_session'),
     path('api/auth/profile/edit/', UserProfileEditView.as_view(), name='api_auth_profile_edit'),
+
+    # Aprovações
+    path('aprovacoes/', AprovacaoListView.as_view(), name='aprovacao_list'),
+    path('aprovacoes/<int:pk>/aprovar/', AprovarReservaView.as_view(), name='aprovar_reserva'),
+    path('aprovacoes/<int:pk>/recusar/', RecusarReservaView.as_view(), name='recusar_reserva'),
 ]

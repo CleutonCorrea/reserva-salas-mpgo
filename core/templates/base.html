@@ -81,10 +81,10 @@
 <body>
     <div class="container mb-5">
         <header class="d-flex justify-content-between align-items-center mb-4 p-3 bg-white shadow-sm rounded-4">
-            <div class="d-flex align-items-center gap-3">
+            <a href="/" class="d-flex align-items-center gap-3 text-decoration-none">
                 <img src="{% static 'img/logo.png' %}" alt="Logo MPGO" height="45">
                 <h1 class="h4 fw-bold text-primary mb-0">Sistema de Reserva de Salas</h1>
-            </div>
+            </a>
             <div id="header-auth-area" class="d-flex align-items-center gap-2">
                 <div class="spinner-border spinner-border-sm text-secondary" role="status" aria-label="Carregando..."></div>
             </div>
@@ -126,20 +126,42 @@
                 window.usuarioGlobalData = data.usuario;
                 const nome = data.usuario.nm_completo || data.usuario.desc_email;
                 const inicial = nome.charAt(0).toUpperCase();
+
+                // Calcula o badge de aprovações pendentes
+                const badgeHtml = (data.qt_pendentes_aprovacao > 0) 
+                    ? `<span class="badge rounded-pill bg-danger ms-auto" style="font-size: 0.65rem;">${data.qt_pendentes_aprovacao}</span>`
+                    : '';
+                
+                const dotBadge = (data.qt_pendentes_aprovacao > 0)
+                    ? `<span class="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle"></span>`
+                    : '';
+
                 area.innerHTML = `
                     <div class="dropdown">
-                        <button class="btn btn-light bg-white border dropdown-toggle d-flex align-items-center gap-2 rounded-pill px-2 py-1 shadow-sm" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <button class="btn btn-light bg-white border dropdown-toggle d-flex align-items-center gap-2 rounded-pill px-2 py-1 shadow-sm position-relative" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center fw-bold" style="width: 32px; height: 32px; font-size: 14px;">
                                 ${inicial}
                             </div>
                             <span class="fw-semibold text-dark d-none d-sm-inline pe-2">${nome}</span>
+                            ${dotBadge}
                         </button>
-                        <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 rounded-3 mt-2" aria-labelledby="userDropdown">
+                        <ul class="dropdown-menu dropdown-menu-end shadow-lg border-0 rounded-3 mt-2" aria-labelledby="userDropdown" style="min-width: 220px;">
                             <li><h6 class="dropdown-header fw-bold text-muted text-uppercase small">Minha Conta</h6></li>
                             <li>
                                 <button class="dropdown-item d-flex align-items-center py-2" id="btn-abrir-perfil" type="button" data-bs-toggle="modal" data-bs-target="#perfilModal">
-                                    <i class="bi bi-person-gear text-primary me-2"></i> Meus Dados
+                                    <i class="bi bi-person text-primary me-2"></i> Meus Dados
                                 </button>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center py-2" href="/">
+                                    <i class="bi bi-calendar3 text-primary me-2"></i> Calendário
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center py-2" href="/aprovacoes/">
+                                    <i class="bi bi-check2-square text-primary me-2"></i> Gerenciar Aprovações
+                                    ${badgeHtml}
+                                </a>
                             </li>
                             <li><hr class="dropdown-divider"></li>
                             <li>
@@ -157,6 +179,12 @@
                     });
                     location.reload();
                 });
+
+                if (data.notificacoes && data.notificacoes.length > 0) {
+                    data.notificacoes.forEach(n => {
+                        window.showToast("🔔 " + n.mensagem, 'info');
+                    });
+                }
             } else {
                 window.usuarioAutenticado = false;
                 area.innerHTML = `

@@ -1,13 +1,15 @@
-from django.views.generic import TemplateView
+from django.views.generic import TemplateView, ListView
 from django.http import JsonResponse
 from django.views import View
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.utils.dateparse import parse_datetime
-from .models import Reservation, Room, UserProfile
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.shortcuts import get_object_or_404, redirect
+from django.contrib import messages
+from .models import Reservation, Room, UserProfile, Notification
 import json
-
 PASTEL_COLORS = [
     '#AEC6CF', '#FFB347', '#77DD77', '#FF6961',
     '#CFCFC4', '#F49AC2', '#CB99C9', '#FFD1DC'
@@ -37,7 +39,7 @@ class EventsJSONView(View):
         sala_id = request.GET.get('sala_id')
         reservations = Reservation.objects.select_related(
             'sala', 'usuario', 'usuario__perfil'
-        ).all()
+        ).exclude(tp_status='R')
 
         if sala_id:
             reservations = reservations.filter(sala_id=sala_id)
@@ -67,6 +69,12 @@ class EventsJSONView(View):
 
             color = get_color_for_room(r.sala.id)
 
+            is_pending = (r.tp_status == 'P')
+            class_name = 'event-pendente' if is_pending else ''
+            
+            if is_pending:
+                tooltip_parts.insert(0, "<span class='badge bg-warning text-dark mb-1'><i class='bi bi-hourglass-split'></i> Aprovação Pendente</span>")
+
             events.append({
                 'id': r.id,
                 'title': f'{r.sala.nm_sala} — {perfil.nm_setor if (perfil and perfil.nm_setor) else nm_completo}',
@@ -76,6 +84,7 @@ class EventsJSONView(View):
                 'tooltip_info': '<br>'.join(tooltip_parts),
                 'backgroundColor': color,
                 'borderColor': color,
+                'className': class_name,
                 'obs_reserva': r.obs_reserva or '',
                 'sala_id': r.sala.id,
                 'nm_solicitante_real': nm_completo,
@@ -262,6 +271,18 @@ class UserSessionView(View):
     def get(self, request, *args, **kwargs):
         if request.user.is_authenticated:
             perfil = getattr(request.user, 'perfil', None)
+            # Notificações de sistema (lidas ao carregar)
+            from .models import Notification, Reservation
+            notificacoes = list(Notification.objects.filter(usuario=request.user, lido=False).values('id', 'mensagem'))
+            if notificacoes:
+                Notification.objects.filter(usuario=request.user, lido=False).update(lido=True)
+            
+            # Contagem de aprovações pendentes onde o usuário logado é o aprovador
+            qt_pendentes = Reservation.objects.filter(
+                tp_status='P', 
+                sala__aprovador=request.user
+            ).count()
+
             return JsonResponse({
                 'autenticado': True,
                 'usuario': {
@@ -271,6 +292,8 @@ class UserSessionView(View):
                     'nr_ramal': perfil.nr_ramal if perfil else '',
                     'nm_setor': perfil.nm_setor if perfil else '',
                 },
+                'notificacoes': notificacoes,
+                'qt_pendentes_aprovacao': qt_pendentes,
             })
         return JsonResponse({'autenticado': False})
 
@@ -332,3 +355,46 @@ class UserProfileEditView(View):
             
         except Exception as e:
             return JsonResponse({'status': 'error', 'errors': [str(e)]}, status=500)
+
+
+# ── Approvals & Notifications ──────────────────────────────────────────────────
+
+class AprovacaoListView(LoginRequiredMixin, ListView):
+    model = Reservation
+    template_name = 'aprovacao_list.html'
+    context_object_name = 'reservas_pendentes'
+
+    def get_queryset(self):
+        return Reservation.objects.filter(
+            tp_status='P',
+            sala__aprovador=self.request.user
+        ).select_related('sala', 'usuario').order_by('dth_inicio')
+
+
+class AprovarReservaView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        reserva = get_object_or_404(Reservation, pk=pk, sala__aprovador=request.user)
+        reserva.tp_status = 'A'
+        reserva.save()
+        
+        Notification.objects.create(
+            usuario=reserva.usuario,
+            mensagem=f"Sua reserva para a sala {reserva.sala.nm_sala} foi aprovada!"
+        )
+        messages.success(request, f"Reserva de {reserva.usuario.get_full_name()} aprovada!")
+        return redirect('aprovacao_list')
+
+
+class RecusarReservaView(LoginRequiredMixin, View):
+    def post(self, request, pk):
+        reserva = get_object_or_404(Reservation, pk=pk, sala__aprovador=request.user)
+        reserva.tp_status = 'R'
+        reserva.save()
+        
+        Notification.objects.create(
+            usuario=reserva.usuario,
+            mensagem=f"Sua reserva para a sala {reserva.sala.nm_sala} foi recusada."
+        )
+        messages.warning(request, f"Reserva de {reserva.usuario.get_full_name()} recusada.")
+        return redirect('aprovacao_list')
+

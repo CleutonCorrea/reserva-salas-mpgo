@@ -56,6 +56,12 @@
     .fc-v-event .fc-event-main {
         color: inherit !important;
     }
+
+    /* Tarefa Passo 2: Estilo visual de Reserva Pendente */
+    .event-pendente {
+        opacity: 0.7;
+        background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.3) 10px, rgba(255,255,255,0.3) 20px) !important;
+    }
 </style>
 {% endblock %}
 
@@ -135,10 +141,25 @@
               <option value="">Selecione uma sala...</option>
               {% for room in rooms %}
                 <option value="{{ room.id }}">
-                  {{ room.nm_sala }} (Cap: {{ room.qtd_capacidade }}){% if room.projetor %} · Projetor{% endif %}
+                  {{ room.nm_sala }} | {% if room.nm_predio %}{{ room.nm_predio }}{% else %}Sem Prédio{% endif %}{% if room.nr_andar %} ({{ room.nr_andar }}){% endif %} | Cap: {{ room.qtd_capacidade }}
+                  {% if room.projetor %}📽️{% endif %}
+                  {% if room.tela %}📺{% endif %}
+                  {% if room.quadro_branco %}📝{% endif %}
+                  {% if room.videoconferencia %}💻{% endif %}
+                  {% if room.acessibilidade %}♿{% endif %}
+                  {% if room.exige_aprovacao %}⚠️{% endif %}
                 </option>
               {% endfor %}
             </select>
+            <div class="form-text mt-2" style="font-size: 0.75rem;">
+               <strong>Legenda de Recursos:</strong> 
+               <span class="me-2">📽️ Projetor</span>
+               <span class="me-2">📺 Tela</span>
+               <span class="me-2">📝 Quadro Branco</span>
+               <span class="me-2">💻 Videoconf.</span>
+               <span class="me-2">♿ Acessibilidade</span>
+               <span class="text-danger fw-medium">⚠️ Requer Aprovação</span>
+            </div>
           </div>
 
           <div class="mb-1">
